@@ -1,0 +1,75 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Install git
+      apt: name=git state=latest
+
+    - name: Add Oracle java repository
+      apt_repository: repo='ppa:webupd8team/java'
+
+    - name: Update apt
+      apt: update_cache=yes
+
+    - name: Accept license terms
+      debconf: name='oracle-java8-installer' question='shared/accepted-oracle-license-v1-1' value='true' vtype='select'
+
+    - name: Install Java
+      apt: name={{item}} state=latest
+      with_items:
+        - oracle-java8-installer
+        - ca-certificates
+        - oracle-java8-set-default
+
+    - name: Download leiningen
+      get_url: url=https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
+               dest=/usr/local/bin/lein
+               mode=0755
+
+    - name: Add PostgreSQL repository
+      apt_repository: repo='deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main'
+
+    - name: Add PostgreSQL repository key
+      apt_key: url=https://www.postgresql.org/media/keys/ACCC4CF8.asc
+
+    - name: Update apt
+      apt: update_cache=yes
+
+    - name: Install PostgreSQL and postgis
+      apt: name={{item}} state=latest
+      with_items:
+        - postgresql-9.6
+        - postgresql-9.6-postgis-2.3
+
+    - name: Start PostgreSQL and enable at boot
+      service: name=postgresql
+               enabled=yes
+               state=started
+               use=service
+
+    - name: set admin postgres user password
+      user: name=postgres password=sefjKaLm7zybE #secret
+
+    - name: Ensure postgresql is listening on all localhost
+      lineinfile: dest=/etc/postgresql/9.6/main/postgresql.conf
+          regexp='^#?listen_addresses\s*='
+          line="listen_addresses = '*'"
+          state=present
+          backrefs=yes
+      notify: restart postgresql
+
+    - lineinfile: dest=/etc/postgresql/9.6/main/pg_hba.conf
+          regexp='local\s+all\s+all\s+peer'
+          line='local all all md5'
+          insertbefore=BOF
+          backrefs=yes
+      notify: restart postgresql
+
+    - lineinfile: dest=/etc/postgresql/9.6/main/pg_hba.conf
+          line='host    all             all             192.168.32.10/24            md5'
+
+    - name: python database adapter
+      apt: name={{item}}
+      with_items:
+        - libpq-dev
+        - python-psycopg2
